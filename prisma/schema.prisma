@@ -1,0 +1,448 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  scope                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  accessToken           String?
+  accessTokenExpiresAt  DateTime?
+  accountId             String
+  idToken               String?
+  password              String?
+  providerId            String
+  refreshToken          String?
+  refreshTokenExpiresAt DateTime?
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@map("accounts")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime
+  ipAddress String?
+  token     String   @unique
+  userAgent String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([identifier, value])
+  @@map("verification")
+}
+
+model Role {
+  idRole       Int       @id @default(autoincrement())
+  nom          String    @unique @db.VarChar(50)
+  createdAt    DateTime?
+  updatedAt    DateTime?
+  utilisateurs User[]
+
+  @@map("role")
+}
+
+model Quartier {
+  idQuartier          Int                  @id
+  nom                 String               @unique @db.VarChar(100)
+  longitude           Decimal              @db.Decimal(10, 8)
+  latitude            Decimal              @db.Decimal(10, 8)
+  superficie          Decimal?             @db.Decimal(10, 2)
+  abonnementQuartiers AbonnementQuartier[]
+  capteurs            Capteur[]
+  suggestions         Suggestion[]
+
+  @@map("quartier")
+}
+
+model TypeCapteur {
+  idTypeCapteur       Int                 @id
+  nom                 String              @unique @db.VarChar(50)
+  unite               String              @db.VarChar(20)
+  seuilMin            Decimal?            @db.Decimal(10, 2)
+  seuilMax            Decimal?            @db.Decimal(10, 2)
+  plageMin            Decimal?            @db.Decimal(10, 2)
+  plageMax            Decimal?            @db.Decimal(10, 2)
+  createdAt           DateTime?
+  updatedAt           DateTime?
+  capteurs            Capteur[]
+  seuilsPersonnalises SeuilPersonnalise[]
+
+  @@map("typeCapteur")
+}
+
+model ProjetCollaboratif {
+  idProjet       Int                   @id
+  nom            String                @db.VarChar(100)
+  description    String?
+  objectif       String?
+  statut         StatutProjet?
+  dateDebut      DateTime?
+  dateFin        DateTime?
+  budget         Decimal?              @db.Decimal(12, 2)
+  resultats      String?
+  participations ParticipationProjet[]
+
+  @@map("projetCollaboratif")
+}
+
+model Analyse {
+  idAnalyse       Int           @id
+  typeAnalyse     TypeAnalyse?
+  algorithme      String?       @db.VarChar(100)
+  resultats       String?
+  parametres      Json?
+  dateAnalyse     DateTime?
+  dureeExecution  Int?
+  precisionModele Decimal?      @db.Decimal(5, 2)
+  nbDonnees       Int?
+  erreurs         String?
+  seBaseSur       SeBaseSur[]
+  faitObjetDe     FaitObjetDe[]
+
+  @@map("analyse")
+}
+
+model User {
+  id                    String                @id @default(cuid()) @map("idUtilisateur")
+  name                  String?               @map("nom") @db.VarChar(50)
+  prenom                String?               @db.VarChar(50)
+  email                 String                @unique @db.VarChar(255)
+  emailVerified         Boolean?              @default(false) @map("emailVerified")
+  image                 String?
+  password              String?               @db.VarChar(255)
+  telephone             String?               @db.VarChar(20)
+  active                Boolean?              @default(true)
+  createdAt             DateTime?             @map("createdAt")
+  updatedAt             DateTime?             @map("updatedAt")
+  idRole                Int?                  @default(3)
+  abonnementQuartiers   AbonnementQuartier[]
+  accounts              Account[]
+  alertes               Alerte[]
+  notifications         Notification[]
+  participationsProjets ParticipationProjet[]
+  rapports              Rapport[]
+  sessions              Session[]
+  seuilsPersonnalises   SeuilPersonnalise[]
+  suggestions           Suggestion[]
+  role                  Role?                 @relation(fields: [idRole], references: [idRole])
+
+  @@map("utilisateur")
+}
+
+model Capteur {
+  idCapteur           Int             @id
+  nom                 String          @db.VarChar(100)
+  description         String?
+  longitude           Decimal?        @db.Decimal(10, 8)
+  latitude            Decimal?        @db.Decimal(10, 8)
+  adresseInstallation String?         @db.VarChar(200)
+  dateInstallation    DateTime?
+  statut              StatutCapteur
+  modele              String?         @db.VarChar(100)
+  fabricant           String?         @db.VarChar(100)
+  numeroSerie         String?         @unique @db.VarChar(50)
+  versionFirmware     String?         @db.VarChar(50)
+  derniereMaintenance DateTime?
+  frequenceCapture    Int
+  createdAt           DateTime?
+  updatedAt           DateTime?
+  idTypeCapteur       Int
+  idQuartier          Int
+  alertes             Alerte[]
+  quartier            Quartier        @relation(fields: [idQuartier], references: [idQuartier])
+  typeCapteur         TypeCapteur     @relation(fields: [idTypeCapteur], references: [idTypeCapteur])
+  donneesCapteur      DonneeCapteur[]
+  faitObjetDe         FaitObjetDe[]
+
+  @@map("capteur")
+}
+
+model DonneeCapteur {
+  idDonnee  BigInt   @id
+  valeur    Decimal  @db.Decimal(15, 5)
+  timestamp DateTime
+  unite     String   @db.VarChar(20)
+  validee   Boolean?
+  idCapteur Int
+  capteur   Capteur  @relation(fields: [idCapteur], references: [idCapteur])
+
+  @@map("donneeCapteur")
+}
+
+model Alerte {
+  idAlerte       Int            @id
+  type           String         @db.VarChar(50)
+  niveauGravite  NiveauGravite
+  message        String?
+  dateCreation   DateTime?
+  dateResolution DateTime?
+  statut         StatutAlerte?
+  valeurMesuree  Decimal?       @db.Decimal(15, 5)
+  seuilDeclenche Decimal        @db.Decimal(10, 2)
+  idUtilisateur  String?
+  idCapteur      Int
+  capteur        Capteur        @relation(fields: [idCapteur], references: [idCapteur])
+  utilisateur    User?          @relation(fields: [idUtilisateur], references: [id])
+  notifications  Notification[]
+
+  @@map("alerte")
+}
+
+model Notification {
+  idNotification Int                 @id
+  titre          String              @db.VarChar(200)
+  message        String
+  dateEnvoi      DateTime?
+  type           TypeNotification
+  statut         StatutNotification?
+  destinataire   String?             @db.VarChar(100)
+  tentative      Int?
+  idAlerte       Int
+  idUtilisateur  String
+  alerte         Alerte              @relation(fields: [idAlerte], references: [idAlerte])
+  utilisateur    User                @relation(fields: [idUtilisateur], references: [id])
+
+  @@map("notification")
+}
+
+model Rapport {
+  idRapport     Int            @id
+  titre         String         @db.VarChar(200)
+  description   String?
+  type          TypeRapport?
+  periodeDebut  DateTime?
+  periodeFin    DateTime?
+  format        FormatRapport?
+  statut        StatutRapport?
+  createdAt     DateTime?
+  taille        Int?
+  cheminFichier String?        @db.VarChar(500)
+  public        Boolean?
+  idUtilisateur String
+  seBaseSur     SeBaseSur[]
+  utilisateur   User           @relation(fields: [idUtilisateur], references: [id])
+
+  @@map("rapport")
+}
+
+model Suggestion {
+  idSuggestion   Int                 @id
+  titre          String              @db.VarChar(200)
+  priorite       PrioriteSuggestion
+  statut         StatutSuggestion
+  categorie      CategorieSuggestion
+  dateCreation   DateTime?
+  dateTraitement DateTime?
+  reponse        String?
+  votes          Int?
+  idQuartier     Int?
+  idUtilisateur  String
+  quartier       Quartier?           @relation(fields: [idQuartier], references: [idQuartier])
+  utilisateur    User                @relation(fields: [idUtilisateur], references: [id])
+
+  @@map("suggestion")
+}
+
+model SeuilPersonnalise {
+  idSeuil       Int         @id
+  seuilMin      Decimal?    @db.Decimal(10, 2)
+  seuilMax      Decimal?    @db.Decimal(10, 2)
+  actif         Boolean?
+  createdAt     DateTime?
+  updatedAt     DateTime
+  idTypeCapteur Int
+  idUtilisateur String
+  typeCapteur   TypeCapteur @relation(fields: [idTypeCapteur], references: [idTypeCapteur])
+  utilisateur   User        @relation(fields: [idUtilisateur], references: [id])
+
+  @@map("seuilPersonnalise")
+}
+
+model AbonnementQuartier {
+  idUtilisateur  String
+  idQuartier     Int
+  actif          Boolean?
+  dateAbonnement DateTime?
+  typeAlerte     TypeAlerte?
+  quartier       Quartier    @relation(fields: [idQuartier], references: [idQuartier])
+  utilisateur    User        @relation(fields: [idUtilisateur], references: [id])
+
+  @@id([idUtilisateur, idQuartier])
+  @@map("abonnementQuartier")
+}
+
+model FaitObjetDe {
+  idCapteur Int
+  idAnalyse Int
+  dateDebut DateTime?
+  dateFin   DateTime?
+  statut    StatutAnalyse?
+  analyse   Analyse        @relation(fields: [idAnalyse], references: [idAnalyse])
+  capteur   Capteur        @relation(fields: [idCapteur], references: [idCapteur])
+
+  @@id([idCapteur, idAnalyse])
+  @@map("faitObjetDe")
+}
+
+model SeBaseSur {
+  idRapport   Int
+  idAnalyse   Int
+  ordre       Int?
+  commentaire String?
+  analyse     Analyse @relation(fields: [idAnalyse], references: [idAnalyse])
+  rapport     Rapport @relation(fields: [idRapport], references: [idRapport])
+
+  @@id([idRapport, idAnalyse])
+  @@map("SeBaseSur")
+}
+
+model ParticipationProjet {
+  idUtilisateur     String
+  idProjet          Int
+  dateParticipation DateTime?
+  roleProjet        RoleProjet?
+  actif             Boolean?
+  projet            ProjetCollaboratif @relation(fields: [idProjet], references: [idProjet])
+  utilisateur       User               @relation(fields: [idUtilisateur], references: [id])
+
+  @@id([idUtilisateur, idProjet])
+  @@map("participationProjet")
+}
+
+enum StatutProjet {
+  EN_ATTENTE
+  EN_COURS
+  TERMINE
+  SUSPENDU
+  ANNULE
+}
+
+enum TypeAnalyse {
+  DESCRIPTIVE
+  PREDICTIVE
+  PRESCRIPTIVE
+  DIAGNOSTIC
+}
+
+enum StatutCapteur {
+  ACTIF
+  INACTIF
+  MAINTENANCE
+  DEFAILLANT
+}
+
+enum NiveauGravite {
+  FAIBLE
+  MOYEN
+  ELEVE
+  CRITIQUE
+}
+
+enum StatutAlerte {
+  OUVERTE
+  EN_COURS
+  RESOLUE
+  FERMEE
+}
+
+enum TypeNotification {
+  EMAIL
+  SMS
+  PUSH
+  SYSTEME
+}
+
+enum StatutNotification {
+  EN_ATTENTE
+  ENVOYE
+  ECHEC
+  LU
+}
+
+enum TypeRapport {
+  JOURNALIER
+  HEBDOMADAIRE
+  MENSUEL
+  ANNUEL
+  PERSONNALISE
+}
+
+enum FormatRapport {
+  PDF
+  EXCEL
+  CSV
+  JSON
+}
+
+enum StatutRapport {
+  EN_COURS
+  TERMINE
+  ECHEC
+}
+
+enum PrioriteSuggestion {
+  FAIBLE
+  MOYENNE
+  ELEVEE
+  URGENTE
+}
+
+enum StatutSuggestion {
+  NOUVELLE
+  EN_COURS
+  APPROUVEE
+  REJETEE
+  IMPLEMENTEE
+}
+
+enum CategorieSuggestion {
+  INFRASTRUCTURE
+  ENVIRONNEMENT
+  SECURITE
+  AMELIORATION
+  BUG
+}
+
+enum TypeAlerte {
+  SEUIL_DEPASSE
+  CAPTEUR_DEFAILLANT
+  MAINTENANCE
+  TOUTES
+}
+
+enum StatutAnalyse {
+  EN_ATTENTE
+  EN_COURS
+  TERMINE
+  ECHEC
+}
+
+enum RoleProjet {
+  CHEF_PROJET
+  COLLABORATEUR
+  OBSERVATEUR
+  CONTRIBUTEUR
+}
