@@ -14,7 +14,6 @@ import Link from "next/link";
 
 export function ModernAuthForm() {
   const { data: session } = useSession();
-  console.log(session);
 
   if (session) {
     return (

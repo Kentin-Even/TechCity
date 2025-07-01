@@ -1,14 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useSensorStreamFixed } from "@/lib/hooks/use-sensor-stream-fixed";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Composant pour afficher une métrique individuelle
 interface MetricCardProps {
@@ -18,6 +13,7 @@ interface MetricCardProps {
   lastUpdate: string;
   status: "normal" | "warning" | "critical";
   icon: React.ReactNode;
+  onClick?: () => void;
 }
 
 function MetricCard({
@@ -27,6 +23,7 @@ function MetricCard({
   lastUpdate,
   status,
   icon,
+  onClick,
 }: MetricCardProps) {
   const statusColors = {
     normal: "bg-green-100 text-green-800 border-green-200",
@@ -35,7 +32,14 @@ function MetricCard({
   };
 
   return (
-    <Card className={`${statusColors[status]}`}>
+    <Card
+      className={`${
+        statusColors[status]
+      } shadow-sm hover:shadow-md transition-shadow ${
+        onClick ? "cursor-pointer hover:scale-105 transition-transform" : ""
+      }`}
+      onClick={onClick}
+    >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium">{title}</CardTitle>
         <div className="h-4 w-4">{icon}</div>
@@ -48,114 +52,137 @@ function MetricCard({
         <p className="text-xs opacity-70">
           Mis à jour: {new Date(lastUpdate).toLocaleTimeString()}
         </p>
+        {onClick && (
+          <p className="text-xs text-blue-600 font-medium mt-2">
+            Cliquez pour voir les détails →
+          </p>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-// Composant de statut de connexion
-interface ConnectionStatusProps {
+// Composant des contrôles du dashboard
+interface DashboardControlsProps {
   isConnected: boolean;
   isConnecting: boolean;
   connectionError: string | null;
   totalMessages: number;
   connectedClients: number;
   lastHeartbeat: Date | null;
+  onToggleConnection: () => void;
+  onClearData: () => void;
 }
 
-function ConnectionStatus({
+function DashboardControls({
   isConnected,
   isConnecting,
   connectionError,
   totalMessages,
   connectedClients,
   lastHeartbeat,
-}: ConnectionStatusProps) {
+  onToggleConnection,
+  onClearData,
+}: DashboardControlsProps) {
   const statusColor = isConnected
-    ? "bg-green-500"
+    ? "text-green-600"
     : isConnecting
-    ? "bg-yellow-500"
-    : "bg-red-500";
+    ? "text-yellow-600"
+    : "text-red-600";
 
   const statusText = isConnected
-    ? "Connecté"
+    ? "🟢 Connecté"
     : isConnecting
-    ? "Connexion..."
-    : "Déconnecté";
+    ? "🟡 Connexion..."
+    : "🔴 Déconnecté";
 
   return (
     <Card className="mb-6">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${statusColor}`}></div>
-          Stream de Données - {statusText}
+        <CardTitle className="flex items-center justify-between">
+          <span>Contrôles du Dashboard</span>
+          <span className={`text-sm ${statusColor}`}>{statusText}</span>
         </CardTitle>
-        <CardDescription>
-          {connectionError ? (
-            <span className="text-red-600">{connectionError}</span>
-          ) : (
-            "Données des capteurs IoT en temps réel (Version Corrigée)"
-          )}
-        </CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div>
-            <span className="font-medium">Messages reçus:</span>
-            <div className="text-lg">{totalMessages}</div>
+      <CardContent className="space-y-4">
+        {/* Status compact */}
+        <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="text-center">
+            <div className="font-mono font-bold text-lg">{totalMessages}</div>
+            <div className="text-muted-foreground">Messages</div>
           </div>
-          <div>
-            <span className="font-medium">Clients connectés:</span>
-            <div className="text-lg">{connectedClients}</div>
+          <div className="text-center">
+            <div className="font-mono font-bold text-lg">
+              {connectedClients}
+            </div>
+            <div className="text-muted-foreground">Clients</div>
           </div>
-          <div>
-            <span className="font-medium">Dernier heartbeat:</span>
-            <div className="text-lg">
+          <div className="text-center">
+            <div className="font-mono font-bold text-xs">
               {lastHeartbeat ? lastHeartbeat.toLocaleTimeString() : "N/A"}
             </div>
+            <div className="text-muted-foreground">Heartbeat</div>
           </div>
-          <div>
-            <span className="font-medium">État:</span>
-            <div
-              className={`text-lg font-medium ${
-                isConnected
-                  ? "text-green-600"
-                  : isConnecting
-                  ? "text-yellow-600"
-                  : "text-red-600"
-              }`}
-            >
-              {statusText}
-            </div>
+        </div>
+
+        {connectionError && (
+          <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
+            Erreur: {connectionError}
           </div>
+        )}
+
+        {/* Boutons de contrôle */}
+        <div className="flex gap-2">
+          <button
+            onClick={onToggleConnection}
+            disabled={isConnecting}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+              isConnecting
+                ? "bg-gray-400 text-gray-600 cursor-not-allowed"
+                : isConnected
+                ? "bg-red-500 hover:bg-red-600 text-white"
+                : "bg-green-500 hover:bg-green-600 text-white"
+            }`}
+          >
+            {isConnecting
+              ? "⏳ Connexion..."
+              : isConnected
+              ? "🔌 Déconnecter"
+              : "🔗 Connecter"}
+          </button>
+
+          <button
+            onClick={onClearData}
+            className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-all duration-200"
+          >
+            🗑️ Vider
+          </button>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-// Composant principal du dashboard
+// Composant principal du dashboard (sans sidebar)
 export default function RealtimeDashboardFixed() {
-  const [selectedSensorType, setSelectedSensorType] = useState<string>("all");
+  const router = useRouter();
 
   const {
     isConnected,
     isConnecting,
     connectionError,
     latestData,
-    allData,
-    dataByType,
     totalMessages,
     connectedClients,
     lastHeartbeat,
     connect,
     disconnect,
     clearData,
-    getLatestBySensor,
+    dataById,
   } = useSensorStreamFixed({
-    autoConnect: false, // Désactiver la connexion automatique
+    autoConnect: true, // ✅ Connexion automatique activée
     onConnect: () => {
-      console.log("🎉 Dashboard Fixed connecté au stream");
+      console.log("🎉 Dashboard connecté au stream SSE");
     },
     onDisconnect: () => {
       console.log("👋 Dashboard Fixed déconnecté du stream");
@@ -164,7 +191,8 @@ export default function RealtimeDashboardFixed() {
       console.log(
         "📊 Dashboard Fixed: Nouvelles données reçues:",
         data.length,
-        "points"
+        "points",
+        data.map((d) => `Capteur ${d.capteurId}: ${d.valeur} ${d.unite}`)
       );
     },
     onError: (error) => {
@@ -172,7 +200,6 @@ export default function RealtimeDashboardFixed() {
     },
   });
 
-  // Fonction pour déterminer le statut d'une valeur
   const getValueStatus = (
     typeCapteur: string,
     valeur: number
@@ -207,120 +234,111 @@ export default function RealtimeDashboardFixed() {
     return icons[typeCapteur] || "📊";
   };
 
-  // Obtenir les dernières données par capteur
-  const latestBySensor = {
-    1: getLatestBySensor(1), // PM2.5
-    2: getLatestBySensor(2), // CO2
-    3: getLatestBySensor(3), // Temperature
-    4: getLatestBySensor(4), // Humidity
-    5: getLatestBySensor(5), // Sound
-    6: getLatestBySensor(6), // Traffic
+  // Obtenir les dernières données par capteur - utiliser useMemo pour recalculer quand dataById change
+  const latestBySensor = useMemo(() => {
+    console.log(
+      "🔄 Dashboard Fixed: Recalcul latestBySensor, dataById keys:",
+      Object.keys(dataById)
+    );
+    return {
+      1: dataById[1] || null, // PM2.5
+      2: dataById[2] || null, // CO2
+      3: dataById[3] || null, // Temperature
+      4: dataById[4] || null, // Humidity
+      5: dataById[5] || null, // Sound
+      6: dataById[6] || null, // Traffic
+    };
+  }, [dataById]);
+
+  // Debug: Surveiller les changements de données
+  useEffect(() => {
+    console.log("🔄 Dashboard Fixed: Changement de données détecté", {
+      allDataLength: Object.keys(dataById).length,
+      latestDataLength: latestData.length,
+      dataById: Object.fromEntries(
+        Object.entries(dataById).map(([id, data]) => [
+          id,
+          data
+            ? `${data.valeur} ${data.unite} à ${new Date(
+                data.timestamp
+              ).toLocaleTimeString()}`
+            : "null",
+        ])
+      ),
+    });
+  }, [dataById, latestData]);
+
+  const handleToggleConnection = () => {
+    console.log("🔘 Dashboard Fixed: Bouton cliqué, état actuel:", {
+      isConnected,
+      isConnecting,
+    });
+    if (isConnected) {
+      console.log("🔌 Dashboard Fixed: Déconnexion...");
+      disconnect();
+    } else {
+      console.log("🔗 Dashboard Fixed: Connexion...");
+      connect();
+    }
+  };
+
+  const handleClearData = () => {
+    console.log("🗑️ Dashboard Fixed: Nettoyage des données...");
+    clearData();
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6">
+      {/* En-tête du dashboard */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold">
-            Dashboard IoT Temps Réel (Corrigé)
-          </h1>
-          <p className="text-gray-600">
-            Monitoring des capteurs urbains - Tech City - Version sans cycles
+          <h2 className="text-2xl font-bold text-gray-900">
+            Dashboard IoT Temps Réel
+          </h2>
+          <p className="text-muted-foreground">
+            Monitoring des capteurs urbains - Tech City
           </p>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              console.log("🔘 Dashboard Fixed: Bouton cliqué, état actuel:", {
-                isConnected,
-                isConnecting,
-              });
-              if (isConnected) {
-                console.log("🔌 Dashboard Fixed: Déconnexion...");
-                disconnect();
-              } else {
-                console.log("🔗 Dashboard Fixed: Connexion...");
-                connect();
-              }
-            }}
-            disabled={isConnecting}
-            className={`px-4 py-2 rounded-md font-medium transition-colors ${
-              isConnecting
-                ? "bg-gray-400 text-gray-600 cursor-not-allowed"
-                : isConnected
-                ? "bg-red-600 hover:bg-red-700 text-white"
-                : "bg-green-600 hover:bg-green-700 text-white"
-            }`}
-          >
-            {isConnecting
-              ? "Connexion..."
-              : isConnected
-              ? "Déconnecter"
-              : "Connecter"}
-          </button>
-
-          <button
-            onClick={() => {
-              console.log("🗑️ Dashboard Fixed: Nettoyage des données...");
-              clearData();
-            }}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md font-medium"
-          >
-            Vider
-          </button>
         </div>
       </div>
 
-      {/* Statut de connexion */}
-      <ConnectionStatus
+      {/* Contrôles du dashboard */}
+      <DashboardControls
         isConnected={isConnected}
         isConnecting={isConnecting}
         connectionError={connectionError}
         totalMessages={totalMessages}
         connectedClients={connectedClients}
         lastHeartbeat={lastHeartbeat}
+        onToggleConnection={handleToggleConnection}
+        onClearData={handleClearData}
       />
 
-      {/* Filtre par type de capteur */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtrer par Type de Capteur</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setSelectedSensorType("all")}
-              className={`px-3 py-1 rounded-md text-sm font-medium ${
-                selectedSensorType === "all"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              Tous ({allData.length})
-            </button>
-
-            {Object.entries(dataByType).map(([type, data]) => (
-              <button
-                key={type}
-                onClick={() => setSelectedSensorType(type)}
-                className={`px-3 py-1 rounded-md text-sm font-medium ${
-                  selectedSensorType === type
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
-              >
-                {getSensorIcon(type)} {type} ({data.length})
-              </button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Métriques en temps réel */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {Object.entries(latestBySensor).map(([capteurId, data]) => {
-          if (!data) return null;
+          console.log(
+            `🔍 Dashboard Fixed: Rendu carte capteur ${capteurId}:`,
+            data
+              ? `${data.valeur} ${data.unite} à ${data.timestamp}`
+              : "AUCUNE DONNÉE"
+          );
+
+          if (!data) {
+            console.log(
+              `⚠️ Dashboard Fixed: Pas de données pour capteur ${capteurId}`
+            );
+            return (
+              <Card key={capteurId} className="bg-gray-100">
+                <CardContent className="text-center py-8">
+                  <div className="text-2xl mb-2">❓</div>
+                  <p className="text-muted-foreground">Capteur #{capteurId}</p>
+                  <p className="text-sm text-muted-foreground">
+                    En attente de données...
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          }
 
           const status = getValueStatus(data.typeCapteur, data.valeur);
 
@@ -333,71 +351,25 @@ export default function RealtimeDashboardFixed() {
               lastUpdate={data.timestamp}
               status={status}
               icon={<span>{getSensorIcon(data.typeCapteur)}</span>}
+              onClick={() => router.push(`/dashboard/${capteurId}`)}
             />
           );
         })}
       </div>
 
-      {/* Liste des dernières données */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Dernières Données
-            {selectedSensorType !== "all" && ` - ${selectedSensorType}`}
-          </CardTitle>
-          <CardDescription>
-            {selectedSensorType === "all"
-              ? `${latestData.length} dernières mesures`
-              : `${(dataByType[selectedSensorType] || []).length} mesures`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="max-h-96 overflow-y-auto">
-            <div className="space-y-2">
-              {(selectedSensorType === "all"
-                ? latestData
-                : dataByType[selectedSensorType] || []
-              )
-                .slice(0, 20)
-                .map((item) => (
-                  <div
-                    key={`${item.capteurId}-${item.timestamp}`}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg">
-                        {getSensorIcon(item.typeCapteur)}
-                      </span>
-                      <div>
-                        <div className="font-medium">{item.capteurNom}</div>
-                        <div className="text-sm text-gray-600">
-                          {item.quartier}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="font-bold text-lg">
-                        {item.valeur.toFixed(1)} {item.unite}
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        {new Date(item.timestamp).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-
-            {latestData.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                {isConnected
-                  ? "En attente de données..."
-                  : "Connectez-vous pour voir les données en temps réel"}
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Message d'état si pas de données */}
+      {latestData.length === 0 && (
+        <Card>
+          <CardContent className="text-center py-12">
+            <div className="text-4xl mb-4">{isConnected ? "⌛" : "🔌"}</div>
+            <p className="text-muted-foreground text-lg">
+              {isConnected
+                ? "En attente de données des capteurs..."
+                : "Connectez-vous pour voir les données en temps réel"}
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

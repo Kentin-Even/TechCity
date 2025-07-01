@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 
 // Types pour les événements SSE
 export interface SensorData {
@@ -107,19 +107,59 @@ export function useSensorStreamFixed(
     onDataRef.current = onData;
   });
 
-  // Données formatées (calculées à chaque render mais sans dépendances dans useCallback)
-  const dataByType = allData.reduce((acc, item) => {
-    if (!acc[item.typeCapteur]) {
-      acc[item.typeCapteur] = [];
-    }
-    acc[item.typeCapteur].push(item);
-    return acc;
-  }, {} as Record<string, SensorData[]>);
+  // ✅ CORRECTION: Données formatées avec useMemo pour assurer la réactivité
+  const dataByType = useMemo(() => {
+    console.log(
+      "🔄 Hook Fixed: Recalcul dataByType, allData.length:",
+      allData.length
+    );
+    return allData.reduce((acc, item) => {
+      if (!acc[item.typeCapteur]) {
+        acc[item.typeCapteur] = [];
+      }
+      acc[item.typeCapteur].push(item);
+      return acc;
+    }, {} as Record<string, SensorData[]>);
+  }, [allData]);
 
-  const dataById = allData.reduce((acc, item) => {
-    acc[item.capteurId] = item;
-    return acc;
-  }, {} as Record<number, SensorData>);
+  const dataById = useMemo(() => {
+    console.log(
+      "🔄 Hook Fixed: Recalcul dataById, allData.length:",
+      allData.length
+    );
+
+    // ✅ AMÉLIORATION: S'assurer de prendre la donnée la plus récente pour chaque capteur
+    const result = allData.reduce((acc, item) => {
+      const existing = acc[item.capteurId];
+
+      // Si pas de donnée existante ou si la nouvelle donnée est plus récente
+      if (
+        !existing ||
+        new Date(item.timestamp) > new Date(existing.timestamp)
+      ) {
+        acc[item.capteurId] = item;
+      }
+
+      return acc;
+    }, {} as Record<number, SensorData>);
+
+    console.log(
+      "🔍 Hook Fixed: dataById calculé:",
+      Object.keys(result).length,
+      "capteurs avec données"
+    );
+
+    // Log des valeurs actuelles pour debug
+    Object.entries(result).forEach(([capteurId, data]) => {
+      console.log(
+        `📊 Capteur ${capteurId}: ${data.valeur} ${data.unite} à ${new Date(
+          data.timestamp
+        ).toLocaleTimeString()}`
+      );
+    });
+
+    return result;
+  }, [allData]);
 
   // Fonction de connexion
   const connect = () => {
@@ -181,17 +221,44 @@ export function useSensorStreamFixed(
                 const singleData = parsedData.data as SensorData;
                 console.log(
                   "🔄 Hook Fixed: Update capteur:",
-                  singleData.capteurId
+                  singleData.capteurId,
+                  "valeur:",
+                  singleData.valeur,
+                  "timestamp:",
+                  singleData.timestamp
                 );
-                setLatestData([singleData]);
-                setAllData((prev) => {
+
+                // ✅ AMÉLIORATION: Mettre à jour latestData de manière plus intelligente
+                setLatestData((prev) => {
+                  // Garder seulement les 10 dernières mises à jour
                   const filtered = prev.filter(
-                    (item) =>
-                      item.capteurId !== singleData.capteurId ||
-                      item.timestamp !== singleData.timestamp
+                    (item) => item.capteurId !== singleData.capteurId
                   );
-                  return [singleData, ...filtered].slice(0, 1000);
+                  return [singleData, ...filtered].slice(0, 10);
                 });
+
+                // ✅ AMÉLIORATION: Mettre à jour allData en gardant l'historique mais en s'assurant que la nouvelle donnée est en premier
+                setAllData((prev) => {
+                  // Ajouter la nouvelle donnée au début
+                  const newAllData = [singleData, ...prev];
+
+                  // Supprimer les doublons (garder seulement la première occurrence = la plus récente)
+                  const uniqueData = newAllData.filter((item, index, self) => {
+                    // Garder l'élément si c'est la première occurrence avec ce capteurId ET ce timestamp
+                    return (
+                      index ===
+                      self.findIndex(
+                        (d) =>
+                          d.capteurId === item.capteurId &&
+                          d.timestamp === item.timestamp
+                      )
+                    );
+                  });
+
+                  // Limiter à 1000 entrées
+                  return uniqueData.slice(0, 1000);
+                });
+
                 onDataRef.current?.([singleData]);
               }
               break;

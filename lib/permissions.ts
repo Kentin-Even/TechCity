@@ -23,6 +23,7 @@ export const PERMISSIONS: Permission[] = [
       "/utilisateurs",
       "/analyses",
       "/notifications",
+      "/profile",
     ],
     deniedPaths: ["/admin", "/settings/system"],
   },
@@ -35,6 +36,7 @@ export const PERMISSIONS: Permission[] = [
       "/alertes/view",
       "/suggestions",
       "/profil",
+      "/profile",
       "/notifications",
       "/abonnements",
     ],
@@ -58,6 +60,7 @@ export const PERMISSIONS: Permission[] = [
       "/donnees",
       "/projets",
       "/profil",
+      "/profile",
     ],
     deniedPaths: [
       "/admin",

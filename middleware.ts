@@ -14,6 +14,7 @@ const protectedRoutes = [
   "/notifications",
   "/suggestions",
   "/profil",
+  "/profile",
   "/abonnements",
   "/donnees",
   "/projets",

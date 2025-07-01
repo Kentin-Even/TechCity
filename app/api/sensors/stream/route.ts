@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { PrismaClient } from "@/lib/generated/prisma";
+import { alertService } from "@/lib/alert-service";
 
 const prisma = new PrismaClient();
 
@@ -29,15 +30,23 @@ const clients = new Map<
   }
 >();
 
+// ✅ NOUVEAU: Variable globale pour garder trace du dernier ID envoyé à tous les clients
+let globalLastSentId: bigint = BigInt(0);
+
 // Fonction pour envoyer des données à tous les clients
 async function broadcastToClients() {
   if (clients.size === 0) return;
 
   try {
-    // Récupérer les dernières données de tous les capteurs
+    // ✅ AMÉLIORATION: Récupérer uniquement les nouvelles données depuis le dernier envoi global
     const latestData = await prisma.donneeCapteur.findMany({
+      where: {
+        idDonnee: {
+          gt: globalLastSentId,
+        },
+      },
+      orderBy: { idDonnee: "asc" },
       take: 50, // Limiter pour la performance
-      orderBy: { timestamp: "desc" },
       include: {
         capteur: {
           include: {
@@ -46,12 +55,12 @@ async function broadcastToClients() {
           },
         },
       },
-      where: {
-        timestamp: {
-          gte: new Date(Date.now() - 10 * 60 * 1000), // Dernières 10 minutes
-        },
-      },
     });
+
+    if (latestData.length === 0) {
+      console.log("📊 Aucune nouvelle donnée à envoyer");
+      return;
+    }
 
     // Formater les données pour le stream
     const formattedData: SensorStreamData[] = latestData.map((donnee) => ({
@@ -69,41 +78,31 @@ async function broadcastToClients() {
       },
     }));
 
+    console.log(`📊 Envoi de ${formattedData.length} nouvelles données`);
+
     // Envoyer à tous les clients connectés
     for (const [clientId, client] of clients.entries()) {
       try {
-        // Filtrer les données nouvelles pour ce client
-        const newData = formattedData.filter(
-          (data) => BigInt(data.id) > client.lastSentId
-        );
-
-        if (newData.length > 0) {
-          const message = `data: ${JSON.stringify({
-            type: "sensor-data",
-            data: newData,
-            timestamp: new Date().toISOString(),
-          })}\n\n`;
-
-          client.controller.enqueue(new TextEncoder().encode(message));
-
-          // Mettre à jour le dernier ID envoyé
-          const maxId = Math.max(...newData.map((d) => Number(d.id)));
-          client.lastSentId = BigInt(maxId);
-        }
-
-        // Envoyer un heartbeat périodique
-        const heartbeat = `event: heartbeat\ndata: ${JSON.stringify({
+        const message = `data: ${JSON.stringify({
+          type: "sensor-data",
+          data: formattedData,
           timestamp: new Date().toISOString(),
-          clients: clients.size,
         })}\n\n`;
 
-        client.controller.enqueue(new TextEncoder().encode(heartbeat));
+        client.controller.enqueue(new TextEncoder().encode(message));
+
+        // Mettre à jour le dernier ID envoyé pour ce client
+        const maxId = latestData[latestData.length - 1].idDonnee;
+        client.lastSentId = maxId;
       } catch (error) {
         console.error(`Erreur envoi données client ${clientId}:`, error);
         // Supprimer le client déconnecté
         clients.delete(clientId);
       }
     }
+
+    // ✅ IMPORTANT: Mettre à jour le dernier ID envoyé globalement
+    globalLastSentId = latestData[latestData.length - 1].idDonnee;
   } catch (error) {
     console.error("Erreur lors du broadcast:", error);
   }
@@ -129,6 +128,13 @@ async function sendSensorUpdate(capteurId: number) {
 
     if (!sensorData) return;
 
+    // 🚨 NOUVEAU: Vérifier les seuils personnalisés des utilisateurs
+    await alertService.verifierSeuilsPersonnalises(
+      sensorData.idCapteur,
+      Number(sensorData.valeur),
+      sensorData.capteur.idTypeCapteur
+    );
+
     const formattedData: SensorStreamData = {
       id: sensorData.idDonnee.toString(),
       capteurId: sensorData.idCapteur,
@@ -150,10 +156,15 @@ async function sendSensorUpdate(capteurId: number) {
       timestamp: new Date().toISOString(),
     })}\n\n`;
 
+    console.log(
+      `📡 Envoi sensor-update - Capteur ${capteurId}: ${formattedData.valeur} ${formattedData.unite}`
+    );
+
     // Envoyer à tous les clients
     for (const [clientId, client] of clients.entries()) {
       try {
         client.controller.enqueue(new TextEncoder().encode(message));
+        console.log(`✅ Update envoyé au client ${clientId}`);
       } catch (error) {
         console.error(`Erreur envoi update client ${clientId}:`, error);
         clients.delete(clientId);
@@ -164,21 +175,134 @@ async function sendSensorUpdate(capteurId: number) {
   }
 }
 
+// ✅ CORRECTION: Fonction pour détecter et envoyer automatiquement les nouvelles données
+async function checkAndSendNewData() {
+  if (clients.size === 0) return;
+
+  try {
+    // ✅ AMÉLIORATION: Récupérer uniquement les données plus récentes que le dernier ID envoyé
+    const recentData = await prisma.donneeCapteur.findMany({
+      where: {
+        idDonnee: {
+          gt: globalLastSentId,
+        },
+      },
+      orderBy: { idDonnee: "asc" },
+      take: 100, // Limiter pour éviter de surcharger
+      include: {
+        capteur: {
+          include: {
+            typeCapteur: true,
+            quartier: true,
+          },
+        },
+      },
+    });
+
+    if (recentData.length > 0) {
+      console.log(`🔍 Détection de ${recentData.length} NOUVELLES données`);
+
+      // Formater les données
+      const formattedData: SensorStreamData[] = recentData.map((donnee) => ({
+        id: donnee.idDonnee.toString(),
+        capteurId: donnee.idCapteur,
+        capteurNom: donnee.capteur.nom,
+        typeCapteur: donnee.capteur.typeCapteur.nom,
+        valeur: Number(donnee.valeur),
+        unite: donnee.unite,
+        timestamp: donnee.timestamp.toISOString(),
+        quartier: donnee.capteur.quartier.nom,
+        coordonnees: {
+          latitude: Number(donnee.capteur.latitude),
+          longitude: Number(donnee.capteur.longitude),
+        },
+      }));
+
+      const message = `data: ${JSON.stringify({
+        type: "sensor-data",
+        data: formattedData,
+        timestamp: new Date().toISOString(),
+      })}\n\n`;
+
+      console.log(`📡 Broadcast de ${formattedData.length} nouvelles données`);
+
+      // Envoyer à tous les clients connectés
+      for (const [clientId, client] of clients.entries()) {
+        try {
+          client.controller.enqueue(new TextEncoder().encode(message));
+          // Mettre à jour le lastSentId du client
+          client.lastSentId = recentData[recentData.length - 1].idDonnee;
+        } catch (error) {
+          console.error(
+            `Erreur envoi nouvelles données client ${clientId}:`,
+            error
+          );
+          clients.delete(clientId);
+        }
+      }
+
+      // ✅ IMPORTANT: Mettre à jour le dernier ID envoyé globalement
+      globalLastSentId = recentData[recentData.length - 1].idDonnee;
+    }
+  } catch (error) {
+    console.error(
+      "Erreur lors de la vérification des nouvelles données:",
+      error
+    );
+  }
+}
+
+// ✅ CORRECTION: Envoyer des heartbeats périodiques
+async function sendHeartbeat() {
+  if (clients.size === 0) return;
+
+  const heartbeat = `event: heartbeat\ndata: ${JSON.stringify({
+    timestamp: new Date().toISOString(),
+    clients: clients.size,
+  })}\n\n`;
+
+  console.log(`💓 Heartbeat envoyé à ${clients.size} clients`);
+
+  for (const [clientId, client] of clients.entries()) {
+    try {
+      client.controller.enqueue(new TextEncoder().encode(heartbeat));
+    } catch (error) {
+      console.error(`Erreur envoi heartbeat client ${clientId}:`, error);
+      clients.delete(clientId);
+    }
+  }
+}
+
 // Démarrer le broadcast périodique
 let broadcastInterval: NodeJS.Timeout;
+let heartbeatInterval: NodeJS.Timeout;
 
 function startBroadcast() {
   if (broadcastInterval) {
     clearInterval(broadcastInterval);
   }
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
 
-  // Envoyer des données toutes les 5 secondes
-  broadcastInterval = setInterval(broadcastToClients, 5000);
+  console.log("🚀 Démarrage du broadcast SSE");
+  console.log("   🔍 Vérification nouvelles données: toutes les 5 secondes");
+  console.log("   💓 Heartbeat: toutes les 30 secondes");
+
+  // ✅ CORRECTION: Utiliser la nouvelle fonction pour détecter les nouvelles données
+  // Réduire la fréquence à 5 secondes au lieu de 3
+  broadcastInterval = setInterval(checkAndSendNewData, 5000);
+
+  // Heartbeat moins fréquent : toutes les 30 secondes au lieu de 5
+  heartbeatInterval = setInterval(sendHeartbeat, 30000);
 }
 
 function stopBroadcast() {
   if (broadcastInterval) {
     clearInterval(broadcastInterval);
+  }
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
   }
 }
 
@@ -192,7 +316,7 @@ export async function GET() {
 
   // Créer le stream
   const stream = new ReadableStream({
-    start(controller) {
+    async start(controller) {
       // Stocker le client
       clients.set(clientId, {
         controller,
@@ -202,6 +326,22 @@ export async function GET() {
 
       // Démarrer le broadcast si c'est le premier client
       if (clients.size === 1) {
+        // ✅ NOUVEAU: Initialiser globalLastSentId avec la dernière donnée existante
+        try {
+          const lastData = await prisma.donneeCapteur.findFirst({
+            orderBy: { idDonnee: "desc" },
+          });
+          if (lastData) {
+            globalLastSentId = lastData.idDonnee;
+            console.log(`🔄 Initialisé globalLastSentId à ${globalLastSentId}`);
+          }
+        } catch (error) {
+          console.error(
+            "Erreur lors de l'initialisation de globalLastSentId:",
+            error
+          );
+        }
+
         startBroadcast();
       }
 
@@ -215,8 +355,70 @@ export async function GET() {
 
       controller.enqueue(new TextEncoder().encode(welcomeMessage));
 
-      // Envoyer immédiatement les dernières données
-      broadcastToClients();
+      // ✅ AMÉLIORATION: Envoyer les dernières données disponibles pour chaque capteur
+      try {
+        // Récupérer la liste des capteurs uniques
+        const capteurs = await prisma.capteur.findMany({
+          select: { idCapteur: true },
+        });
+
+        // Récupérer la dernière donnée pour chaque capteur
+        const lastDataPromises = capteurs.map((capteur) =>
+          prisma.donneeCapteur.findFirst({
+            where: { idCapteur: capteur.idCapteur },
+            orderBy: { timestamp: "desc" },
+            include: {
+              capteur: {
+                include: {
+                  typeCapteur: true,
+                  quartier: true,
+                },
+              },
+            },
+          })
+        );
+
+        const lastDataResults = await Promise.all(lastDataPromises);
+        const lastDataPerSensor = lastDataResults.filter(
+          (data) => data !== null
+        );
+
+        if (lastDataPerSensor.length > 0) {
+          const formattedData: SensorStreamData[] = lastDataPerSensor.map(
+            (donnee) => ({
+              id: donnee.idDonnee.toString(),
+              capteurId: donnee.idCapteur,
+              capteurNom: donnee.capteur.nom,
+              typeCapteur: donnee.capteur.typeCapteur.nom,
+              valeur: Number(donnee.valeur),
+              unite: donnee.unite,
+              timestamp: donnee.timestamp.toISOString(),
+              quartier: donnee.capteur.quartier.nom,
+              coordonnees: {
+                latitude: Number(donnee.capteur.latitude),
+                longitude: Number(donnee.capteur.longitude),
+              },
+            })
+          );
+
+          const initialDataMessage = `data: ${JSON.stringify({
+            type: "sensor-data",
+            data: formattedData,
+            timestamp: new Date().toISOString(),
+          })}\n\n`;
+
+          controller.enqueue(new TextEncoder().encode(initialDataMessage));
+          console.log(
+            `📊 Envoyé les dernières données de ${formattedData.length} capteurs au nouveau client`
+          );
+
+          // Mettre à jour le lastSentId du client avec la plus grande ID
+          const maxId = Math.max(...formattedData.map((d) => Number(d.id)));
+          clients.get(clientId)!.lastSentId = BigInt(maxId);
+        }
+      } catch (error) {
+        console.error("Erreur lors de l'envoi des données initiales:", error);
+      }
     },
 
     cancel() {
