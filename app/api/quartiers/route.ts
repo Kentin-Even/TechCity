@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
-// GET - Récupérer la liste des quartiers
+// GET - Récupérer tous les quartiers
 export async function GET(request: NextRequest) {
   try {
     const session = await auth.api.getSession({
@@ -13,10 +13,7 @@ export async function GET(request: NextRequest) {
 
     if (!session?.user?.id) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "Non autorisé",
-        },
+        { success: false, error: "Non autorisé" },
         { status: 401 }
       );
     }
@@ -31,6 +28,8 @@ export async function GET(request: NextRequest) {
         _count: {
           select: {
             capteurs: true,
+            suggestions: true,
+            abonnementQuartiers: true,
           },
         },
       },
@@ -46,10 +45,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Erreur lors de la récupération des quartiers:", error);
     return NextResponse.json(
-      {
-        success: false,
-        error: "Erreur lors de la récupération des quartiers",
-      },
+      { success: false, error: "Erreur serveur" },
       { status: 500 }
     );
   }

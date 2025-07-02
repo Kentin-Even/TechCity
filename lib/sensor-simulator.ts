@@ -298,13 +298,6 @@ class SensorSimulator {
 
     console.log("✅ Simulateur arrêté avec succès");
   }
-
-  public getStatus(): { isRunning: boolean; activeSimulators: number } {
-    return {
-      isRunning: this.isRunning,
-      activeSimulators: this.intervals.length,
-    };
-  }
 }
 
 // Instance singleton du simulateur

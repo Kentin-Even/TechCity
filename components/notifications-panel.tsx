@@ -257,14 +257,8 @@ export default function NotificationsPanel({
                           <span>
                             {notification.alerte.capteur.quartier.nom}
                           </span>
-                          <span>•</span>
-                          <span>{notification.alerte.capteur.nom}</span>
                         </div>
                         <div className="flex items-center space-x-2">
-                          <Badge variant="outline" className="text-xs">
-                            {notification.alerte.valeurMesuree}{" "}
-                            {notification.alerte.capteur.typeCapteur.unite}
-                          </Badge>
                           {notification.statut !== "LU" && (
                             <div className="w-2 h-2 bg-blue-500 rounded-full" />
                           )}

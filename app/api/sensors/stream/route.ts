@@ -128,12 +128,18 @@ async function sendSensorUpdate(capteurId: number) {
 
     if (!sensorData) return;
 
-    // 🚨 NOUVEAU: Vérifier les seuils personnalisés des utilisateurs
-    await alertService.verifierSeuilsPersonnalises(
-      sensorData.idCapteur,
-      Number(sensorData.valeur),
-      sensorData.capteur.idTypeCapteur
-    );
+    // ✅ CORRECTION CRITIQUE: Rendre l'appel aux alertes NON-BLOQUANT
+    Promise.resolve()
+      .then(() =>
+        alertService.verifierSeuilsPersonnalises(
+          sensorData.idCapteur,
+          Number(sensorData.valeur),
+          sensorData.capteur.idTypeCapteur
+        )
+      )
+      .catch((error) => {
+        console.error("❌ Erreur service d'alertes (non-bloquante):", error);
+      });
 
     const formattedData: SensorStreamData = {
       id: sensorData.idDonnee.toString(),
@@ -201,6 +207,24 @@ async function checkAndSendNewData() {
 
     if (recentData.length > 0) {
       console.log(`🔍 Détection de ${recentData.length} NOUVELLES données`);
+
+      // ✅ NOUVEAU: Vérifier les seuils pour chaque nouvelle donnée
+      for (const donnee of recentData) {
+        Promise.resolve()
+          .then(() =>
+            alertService.verifierSeuilsPersonnalises(
+              donnee.idCapteur,
+              Number(donnee.valeur),
+              donnee.capteur.idTypeCapteur
+            )
+          )
+          .catch((error) => {
+            console.error(
+              `❌ Erreur vérification seuils capteur ${donnee.idCapteur} (non-bloquante):`,
+              error
+            );
+          });
+      }
 
       // Formater les données
       const formattedData: SensorStreamData[] = recentData.map((donnee) => ({
@@ -291,10 +315,10 @@ function startBroadcast() {
 
   // ✅ CORRECTION: Utiliser la nouvelle fonction pour détecter les nouvelles données
   // Réduire la fréquence à 5 secondes au lieu de 3
-  broadcastInterval = setInterval(checkAndSendNewData, 5000);
+  broadcastInterval = setInterval(checkAndSendNewData, 3000);
 
   // Heartbeat moins fréquent : toutes les 30 secondes au lieu de 5
-  heartbeatInterval = setInterval(sendHeartbeat, 30000);
+  heartbeatInterval = setInterval(sendHeartbeat, 10000);
 }
 
 function stopBroadcast() {
@@ -326,14 +350,18 @@ export async function GET() {
 
       // Démarrer le broadcast si c'est le premier client
       if (clients.size === 1) {
-        // ✅ NOUVEAU: Initialiser globalLastSentId avec la dernière donnée existante
+        // ✅ CORRECTION CRITIQUE: Ne pas initialiser globalLastSentId trop haut
+        // Cela empêche la détection des nouvelles données du simulateur
         try {
           const lastData = await prisma.donneeCapteur.findFirst({
             orderBy: { idDonnee: "desc" },
           });
           if (lastData) {
-            globalLastSentId = lastData.idDonnee;
-            console.log(`🔄 Initialisé globalLastSentId à ${globalLastSentId}`);
+            // ✅ IMPORTANT: Laisser une marge pour capturer les nouvelles données
+            globalLastSentId = lastData.idDonnee - BigInt(50);
+            console.log(
+              `🔄 Initialisé globalLastSentId à ${globalLastSentId} (réduit pour capturer nouvelles données)`
+            );
           }
         } catch (error) {
           console.error(

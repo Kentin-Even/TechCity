@@ -10,6 +10,10 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { Toaster } from "sonner";
+import NotificationStack from "@/components/notification-stack";
+import NotificationsPanel from "@/components/notifications-panel";
+import { GlobalSSEConnection } from "@/components/global-sse-connection";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -41,6 +45,9 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <Toaster />
+        {/* Connexion SSE globale pour les notifications et mises à jour */}
+        <GlobalSSEConnection />
         <SidebarProvider>
           <AppSidebar session={session} />
           <SidebarInset>
@@ -58,6 +65,13 @@ export default async function RootLayout({
             </div>
           </SidebarInset>
         </SidebarProvider>
+        <NotificationsPanel />
+
+        {/* Système de notifications */}
+        <NotificationStack />
+
+        {/* Toaster pour les notifications toast */}
+        <Toaster position="top-right" richColors closeButton duration={4000} />
       </body>
     </html>
   );

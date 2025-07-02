@@ -14,7 +14,8 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AvatarUpload } from "@/components/ui/avatar-upload";
 import { useAuth } from "@/lib/hooks/useAuth";
-import { User, Mail, Phone, Calendar, Shield } from "lucide-react";
+import { User, Mail, Phone, Calendar, Shield, Bell } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface UserProfile {
   id: string;
@@ -31,6 +32,7 @@ interface UserProfile {
 
 export default function ProfilePage() {
   const { user, loading } = useAuth();
+  const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -331,6 +333,34 @@ export default function ProfilePage() {
                 </Button>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Section Alertes Personnalisées */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bell className="h-5 w-5" />
+              Alertes Personnalisées
+            </CardTitle>
+            <CardDescription>
+              Configurez vos seuils d&apos;alertes pour recevoir des
+              notifications
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600 mb-4">
+              Définissez des seuils personnalisés pour chaque type de capteur et
+              recevez des notifications lorsque ces seuils sont dépassés dans
+              les quartiers auxquels vous êtes abonné.
+            </p>
+            <Button
+              onClick={() => router.push("/alertes")}
+              className="w-full sm:w-auto"
+            >
+              <Bell className="h-4 w-4 mr-2" />
+              Gérer mes alertes
+            </Button>
           </CardContent>
         </Card>
       </div>

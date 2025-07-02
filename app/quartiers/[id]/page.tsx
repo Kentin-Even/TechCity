@@ -23,6 +23,7 @@ import {
   XCircle,
   Settings,
 } from "lucide-react";
+import QuartierSubscription from "@/components/quartier-subscription";
 
 interface TypeCapteur {
   idTypeCapteur: number;
@@ -210,7 +211,13 @@ export default function QuartierDetailPage() {
           </Button>
         </Link>
 
-        <h1 className="text-3xl font-bold mb-4">{data.quartier.nom}</h1>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-3xl font-bold">{data.quartier.nom}</h1>
+          <QuartierSubscription
+            quartierId={data.quartier.idQuartier}
+            quartierNom={data.quartier.nom}
+          />
+        </div>
         <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
           <div className="flex items-center gap-2">
             <MapPin className="h-4 w-4" />

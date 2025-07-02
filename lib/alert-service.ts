@@ -34,48 +34,46 @@ class AlertService {
     typeCapteurId: number
   ): Promise<void> {
     try {
-      // Récupérer les seuils personnalisés actifs pour ce type de capteur
+      // ✅ OPTIMISATION: Requêtes séparées plus efficaces
+
+      // 1. D'abord, trouver le quartier du capteur
+      const capteur = await prisma.capteur.findUnique({
+        where: { idCapteur },
+        select: { idQuartier: true },
+      });
+
+      if (!capteur) return;
+
+      // 2. Trouver les utilisateurs abonnés à ce quartier
+      const abonnementsActifs = await prisma.abonnementQuartier.findMany({
+        where: {
+          idQuartier: capteur.idQuartier,
+          actif: true,
+        },
+        select: { idUtilisateur: true },
+      });
+
+      if (abonnementsActifs.length === 0) return;
+
+      const utilisateursAbonnes = abonnementsActifs.map((a) => a.idUtilisateur);
+
+      // 3. Récupérer les seuils personnalisés actifs pour ces utilisateurs
       const seuilsPersonnalises = await prisma.seuilPersonnalise.findMany({
         where: {
           idTypeCapteur: typeCapteurId,
           actif: true,
+          idUtilisateur: {
+            in: utilisateursAbonnes,
+          },
         },
         include: {
-          utilisateur: {
-            include: {
-              abonnementQuartiers: {
-                where: {
-                  actif: true,
-                },
-                include: {
-                  quartier: {
-                    include: {
-                      capteurs: {
-                        where: {
-                          idCapteur: idCapteur,
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
+          typeCapteur: {
+            select: { nom: true },
           },
-          typeCapteur: true,
         },
       });
 
       for (const seuil of seuilsPersonnalises) {
-        // Vérifier si l'utilisateur est abonné au quartier de ce capteur
-        const estAbonne = seuil.utilisateur.abonnementQuartiers.some(
-          (abonnement) =>
-            abonnement.quartier.capteurs.some(
-              (capteur) => capteur.idCapteur === idCapteur
-            )
-        );
-
-        if (!estAbonne) continue;
-
         // Vérifier si le seuil est dépassé
         const seuilDepasse = this.verifierDepassementSeuil(
           valeur,
@@ -276,6 +274,7 @@ class AlertService {
 
   // Récupérer les notifications non lues d'un utilisateur
   async getNotificationsNonLues(idUtilisateur: string) {
+    // ✅ OPTIMISATION: Requête simplifiée avec seulement les données nécessaires
     return prisma.notification.findMany({
       where: {
         idUtilisateur,
@@ -283,13 +282,33 @@ class AlertService {
           in: ["EN_ATTENTE", "ENVOYE"],
         },
       },
-      include: {
+      select: {
+        idNotification: true,
+        titre: true,
+        message: true,
+        dateEnvoi: true,
+        type: true,
+        statut: true,
         alerte: {
-          include: {
+          select: {
+            niveauGravite: true,
+            valeurMesuree: true,
+            seuilDeclenche: true,
             capteur: {
-              include: {
-                quartier: true,
-                typeCapteur: true,
+              select: {
+                idCapteur: true,
+                nom: true,
+                quartier: {
+                  select: {
+                    nom: true,
+                  },
+                },
+                typeCapteur: {
+                  select: {
+                    nom: true,
+                    unite: true,
+                  },
+                },
               },
             },
           },
